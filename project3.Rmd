@@ -1,0 +1,272 @@
+---
+title: "Project 3 - DS8002"
+author: "Rafik Matta"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+---
+##Exploratorary Data Analysis
+
+
+```{r}
+library(readr)
+library("MASS")
+library(corrplot)
+library(plotly)
+
+winequality_red <- read_delim("C:/Users/rafik/Google Drive/Education/ds8002/projects/project3/winequality-red.csv", 
+    ";", escape_double = FALSE, trim_ws = TRUE)
+
+winequality_white <- read_delim("C:/Users/rafik/Google Drive/Education/ds8002/projects/project3/winequality-white.csv", 
+    ";", escape_double = FALSE, trim_ws = TRUE)
+```
+
+\pagebreak
+
+### EDA Question 1- Variance of each column
+
+#### Plots for Red DataSet
+```{r}
+for( i in colnames(winequality_red))
+{
+  d <- density(winequality_red[[i]],na.rm = TRUE)
+  plot(d,main=i)
+  
+}
+```
+
+#### Plots for White DataSet
+```{r}
+for( i in colnames(winequality_white))
+{
+  d <- density(winequality_white[[i]])
+  plot(d,main=i)
+}
+```
+
+
+```{r}
+print("RED WINES")
+print("==================")
+for( i in colnames(winequality_red))
+{
+  print(i)
+  print(var(winequality_red[[i]],na.rm=TRUE))
+  print("----------")
+}
+
+print("WHITE WINES")
+print("==================")
+for( i in colnames(winequality_red))
+{
+  print(i)
+  print(var(winequality_red[[i]],na.rm=TRUE))
+  print("----------")
+}
+```
+\pagebreak
+
+### EDA Question 2- Variance of each column
+
+```{r}
+corrplot(cor(na.omit(winequality_red)),method = 'number')
+corrplot(cor(winequality_white),method = 'number')
+```
+
+\pagebreak
+
+### EDA Question 3- Feature Selection
+
+Having explored both data set's I will pick red wines as it has a more interesting set of correlations between it's features and generally higher variability overall since it's a larger dataset. 
+
+Based on the results of the correlation analysis it's clear that the best features with the highest correlation in the data set chosen are the "Volatile Acidity" feature and the "Alcohol" feature. Using these two, I will prepare the data set for analysis.
+
+```{r}
+wq_red_df <- data.frame(winequality_red$`volatile acidity`,
+                        winequality_red$`alcohol`,
+                        winequality_red$`quality`)
+```
+
+```{r}
+data_size = length(wq_red_df$winequality_red..volatile.acidity.)
+train_val = .8*data_size
+test_val = train_val + 1
+
+response_var_train <- winequality_red$`quality`[1:train_val]
+response_var_test <- winequality_red$`quality`[test_val:data_size]
+
+wq_data <- data.frame(rep(1,length(winequality_red$`quality`)),
+                              wq_red_df$winequality_red..volatile.acidity., 
+                              wq_red_df$winequality_red.alcohol)
+wq_data_matrix <- data.matrix(wq_data)
+
+wq_data_matrix_train <- wq_data_matrix[1:train_val,]
+wq_data_matrix_test <- wq_data_matrix[test_val:data_size,]
+```
+
+\pagebreak
+
+## Analysis
+
+### Analysis Question 1- Multivariate Linear Regression
+
+As per eqution (5.35) from the I2ML course text book:
+
+$$r^t = w_0 + w_1x_1^t + w_2x_2^t+...+w_dx_d^t+\epsilon $$
+
+
+Now I train the model to determine the weights of the regression. This is based off of the derived formula from the book (5.39):
+
+```{r}
+weights = ginv(t(wq_data_matrix_train) %*% wq_data_matrix_train) %*%
+          t(wq_data_matrix_train) %*% response_var_train
+```
+
+Calculating Epsilon:
+
+```{r}
+response_on_training = vector()
+
+for(i in 1:length(response_var_train))
+{
+  response_on_training[i] = weights[1] + 
+    wq_data_matrix_train[i,2]*weights[2] + 
+    wq_data_matrix_train[i,3]*weights[3]
+}
+
+#this is the expected error 
+epsilon = 0
+for(i in 1:length(response_var_train))
+{
+ epsilon = epsilon + response_on_training[i] - weights[1] -
+    wq_data_matrix_train[i,2]*weights[2] - 
+    wq_data_matrix_train[i,3]*weights[3] 
+}
+epsilon = (0.5)*(epsilon^2)
+
+```
+
+An explanation of the vector that is produced. The first value is $$w_0$$ which is the intercept. The rest of the values are the ordered weights of the variables.
+
+With my weights produced, I can now test my model against the test data:
+
+```{r}
+response_test = vector()
+for(i in 1:length(response_var_test))
+{
+  response_test[i] = weights[1] + 
+    wq_data_matrix_test[i,2]*weights[2] + 
+    wq_data_matrix_test[i,3]*weights[3]
+}
+```
+
+Finally, to test the performance of the model, I will calculate the RMSE and the R-Squared:
+
+```{r}
+#RMSE
+rmse_of_model = sqrt(sum((response_test-response_var_test)^2))
+
+#R-Squared
+ssr = sum((response_test-response_var_test)^2)
+ss_total = sum((response_test-mean(response_test))^2)
+rsquared = (ss_total - ssr)/ss_total
+
+print("RMSE:")
+print(rmse_of_model)
+print("R-Squared:")
+print(rsquared)
+```
+
+As can be seen by the above values, it's quite clear that this model performs very poorly. As this model does have an intercept as mentioned above, the RSquared value being negative is an indication of an extremely poor fit to the data.  
+
+\pagebreak
+
+### Analysis Question 2- Multivariate Quadratic Regression (Higher Order Polynomial)
+
+I will attempt to see if a quadratic regression with a higher order of polynomial can produce a better result.
+
+As before I will first train the data.
+
+```{r}
+wq_data_matrix_train =  cbind(wq_data_matrix_train,wq_data_matrix_train[,2]^2)
+wq_data_matrix_train =  cbind(wq_data_matrix_train,wq_data_matrix_train[,2]*wq_data_matrix_train[,3])
+wq_data_matrix_train =  cbind(wq_data_matrix_train,wq_data_matrix_train[,3]^2)
+
+weights = ginv(t(wq_data_matrix_train) %*% wq_data_matrix_train) %*%
+          t(wq_data_matrix_train) %*% response_var_train
+```
+
+Caclulating epsilon:
+
+```{r}
+response_on_training = vector()
+
+for(i in 1:length(response_var_train))
+{
+  response_on_training[i] = weights[1] + 
+    wq_data_matrix_train[i,2]*weights[2] + 
+    wq_data_matrix_train[i,3]*weights[3] +
+    wq_data_matrix_train[i,4]*weights[4] +
+    wq_data_matrix_train[i,5]*weights[5] +
+    wq_data_matrix_train[i,6]*weights[6]
+}
+
+#this is the expected error 
+epsilon = 0
+for(i in 1:length(response_var_train))
+{
+ epsilon = epsilon + response_on_training[i] - weights[1] -
+    wq_data_matrix_train[i,2]*weights[2] - 
+    wq_data_matrix_train[i,3]*weights[3] -
+    wq_data_matrix_train[i,4]*weights[4] -
+    wq_data_matrix_train[i,5]*weights[5] -
+    wq_data_matrix_train[i,6]*weights[6]
+   
+}
+epsilon = (0.5)*(epsilon^2)
+
+```
+
+With my weights produced, I can now test my model against the test data:
+
+```{r}
+response_test = vector()
+
+wq_data_matrix_test =  cbind(wq_data_matrix_test,wq_data_matrix_test[,2]^2)
+wq_data_matrix_test =  cbind(wq_data_matrix_test,wq_data_matrix_test[,2]*wq_data_matrix_test[,3])
+wq_data_matrix_test =  cbind(wq_data_matrix_test,wq_data_matrix_test[,3]^2)
+
+for(i in 1:length(response_var_test))
+{
+  response_test[i] = weights[1] + 
+    wq_data_matrix_test[i,2]*weights[2] + 
+    wq_data_matrix_test[i,3]*weights[3] +
+    wq_data_matrix_test[i,4]*weights[4] +
+    wq_data_matrix_test[i,5]*weights[5] +
+    wq_data_matrix_test[i,6]*weights[6]
+}
+```
+
+Finally, to test the performance of the model, I will calculate the RMSE and the R-Squared:
+
+```{r}
+#RMSE
+rmse_of_model = sqrt(sum((response_test-response_var_test)^2))
+
+#R-Squared
+ssr = sum((response_test-response_var_test)^2)
+ss_total = sum((response_test-mean(response_test))^2)
+rsquared = (ss_total - ssr)/ss_total
+
+print("RMSE:")
+print(rmse_of_model)
+print("R-Squared:")
+print(rsquared)
+```
+
+\pagebreak
+
+### Analysis Question 3 - Which order gives best performance
+
+I did not have time to plot or look at any order greater than 2. That being said, an order of two didn't majorily improve performance so I'm not expecting test error to go down much further with higher orders. That also being said, as per Ch 4 in the book we have a bias-variance trade off to consider. The higher the fit, the more susceptible it will be to variance and thus will not generalise well. I think a linear model is appropriate here given the data.
